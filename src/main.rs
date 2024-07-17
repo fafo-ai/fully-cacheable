@@ -3,6 +3,8 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
+use url::{Url, ParseError};
+
 /*
 use futures::StreamExt;
 use reqwest_eventsource::{Event, EventSource};
@@ -26,6 +28,10 @@ async fn proxy_request(
     state: web::Data<AppState>,
     client: web::Data<reqwest::Client>,
 ) -> Result<HttpResponse, Error> {
+    let OPENAI_BASE_URL = Url::parse("https://api.openai.com");
+    openai_base_url
+
+
     let url = req.full_url();
     println!("Got request: {:?}", url);
     let openai_api_key = req.headers()
