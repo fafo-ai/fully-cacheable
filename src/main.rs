@@ -24,7 +24,7 @@ async fn handle_status() -> impl Responder {
 
 async fn proxy_request(
     req: HttpRequest,
-    req_body: web::Json<Value>,
+    mut req_body: web::Json<Value>,
     state: web::Data<AppState>,
     client: web::Data<reqwest::Client>,
 ) -> Result<HttpResponse, Error> {
@@ -47,53 +47,74 @@ async fn proxy_request(
 
     if from.path().to_string() == "/v1/embeddings" {
         let input = req_body["input"].as_str().unwrap_or("");
+        let cache_key = input.to_string();
         let mut cache = state.embedding_cache.lock().unwrap();
 
-        print!("Call to embeddings API.");
-        if let Some(cached_embedding) = cache.get(input) {
-            println!("Cache hit!");
+        let old_format = req_body["encoding_format"].as_str().unwrap_or("text");
 
+        print!("Call to embeddings API.");
+        let result = if let Some(cached_embedding) = cache.get(&cache_key) {
+            println!("Cache hit!");
+            cached_embedding.clone()
+        } else {
+            println!("Cache miss..");
+
+            req_body.as_object_mut().unwrap().insert("encoding_format".into(), json!("base64"));
+            let resp = client.post(to)
+                .header(AUTHORIZATION, &openai_api_key)
+                .timeout(Duration::from_secs(2))
+                .json(&req_body)
+                .send()
+                .await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+            /* Assert there's only one */
+            let resp_json: Value = resp.json().await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+            // println!("Coe: {:?}", resp_json);
+
+            let embedding = BASE64_STANDARD.decode(
+                resp_json["data"][0]["embedding"].as_str().unwrap()
+            )
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+            println!("B");
+            let x = embedding.clone();
+            cache.insert(cache_key, x);
+            println!("C");
+            embedding
+        };
+
+        if old_format == "base64" {
             return Ok(HttpResponse::Ok().json(json!({
                 "data": [{
-                    "embedding": cached_embedding,
+                    "embedding": BASE64_STANDARD.encode(&result),
                     "index": 0,
                     "object": "embedding"
                 }],
                 "model": req_body["model"],
                 "object": "list",
                 "usage": {
-                    "prompt_tokens": input.split_whitespace().count(),
-                    "total_tokens": input.split_whitespace().count()
+                    "prompt_tokens": result.len() / 4,
+                    "total_tokens": result.len() / 4,
                 }
             })));
+        } else {
+            return Ok(HttpResponse::Ok().json(json!({
+                "data": [{
+                    "embedding": result,
+                    "index": 0,
+                    "object": "embedding"
+                }],
+                "model": req_body["model"],
+                "object": "list",
+                "usage": {
+                    "prompt_tokens": result.len() / 4,
+                    "total_tokens": result.len() / 4,
+                }
+            }));
         }
-        println!("Cache miss..");
-
-        let resp = client.post(to)
-            .header(AUTHORIZATION, &openai_api_key)
-            .timeout(Duration::from_secs(2))
-            .json(&req_body)
-            .send()
-            .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-
-        /* Assert there's only one */
-        let resp_json: Value = resp.json().await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-
-        // println!("Coe: {:?}", resp_json);
-
-        let embedding = BASE64_STANDARD.decode(
-            resp_json["data"][0]["embedding"].as_str().unwrap()
-        )
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-
-
-        println!("B");
-        cache.insert(input.to_string(), embedding.clone());
-        println!("C");
-
-        Ok(HttpResponse::Ok().json(resp_json))
     } else {
         println!("Just proxying...");
         let mut headers = HeaderMap::new();
