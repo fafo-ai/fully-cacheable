@@ -1,4 +1,4 @@
-use actix_web::{web, App, HttpServer, HttpResponse, Error, HttpRequest};
+use actix_web::{web, get, App, HttpServer, HttpResponse, Error, HttpRequest, Responder};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -13,6 +13,11 @@ const PORT: u16 = 4567;
 
 struct AppState {
     embedding_cache: Mutex<HashMap<String, Vec<f32>>>,
+}
+
+#[get("/status")]
+async fn handle_status() -> impl Responder {
+    HttpResponse::Ok().body("up")
 }
 
 async fn proxy_request(
@@ -140,6 +145,7 @@ async fn main() -> std::io::Result<()>{
         App::new()
             .app_data(app_state.clone())
             .app_data(client.clone())
+            .service(handle_status)
             .route("/v1/{endpoint:.*}", web::post().to(proxy_request))
     })
         .bind(("127.0.0.1", PORT))?
