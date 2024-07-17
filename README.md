@@ -6,6 +6,7 @@ Call this instead of OpenAI's API - and have your embeddings automatically cache
 Written in Rust.
 
 ```
+cargo run --package fully-cacheable --bin fully-cacheable
 
 ```
 <img width="250px" src="https://github.com/user-attachments/assets/f1602dba-55f8-42ba-85ed-ce52439e2c14" />
