@@ -532,7 +532,6 @@ dependencies = [
  "reqwest",
  "reqwest-eventsource",
  "serde_json",
- "url",
 ]
 
 [[package]]
