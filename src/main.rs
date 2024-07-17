@@ -16,15 +16,17 @@ async fn proxy_request(
     state: web::Data<AppState>,
     client: web::Data<reqwest::Client>,
 ) -> Result<HttpResponse, Error> {
+    let url = req.full_url();
+    println!("Got request: {:?}", url);
     let openai_api_key = req.headers()
         .get(AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .ok_or_else(|| actix_web::error::ErrorUnauthorized("Missing API key"))?
         .to_string();
 
-    let openai_url = "https://api.openai.com/v1/embeddings";
 
-    if req_body["model"].as_str().unwrap_or("").contains("embed") {
+    if url.path().to_string() == "/v1/embeddings" {
+        println!("Call to embeddings API. Cacheing...");
         let input = req_body["input"].as_str().unwrap_or("");
         let mut cache = state.embedding_cache.lock().unwrap();
 
@@ -44,7 +46,7 @@ async fn proxy_request(
             })));
         }
 
-        let resp = client.post(openai_url)
+        let resp = client.post(url)
             .header(AUTHORIZATION, &openai_api_key)
             .json(&req_body)
             .send()
@@ -60,6 +62,7 @@ async fn proxy_request(
 
         Ok(HttpResponse::Ok().json(resp_json))
     } else {
+        println!("Just proxying...");
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, HeaderValue::from_str(&openai_api_key)
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?);
@@ -105,7 +108,7 @@ async fn proxy_request(
                 .streaming(rx))
              */
         } else {
-            let resp = client.post("https://api.openai.com/v1/chat/completions")
+            let resp = client.post(url)
                 .headers(headers)
                 .json(&req_body)
                 .send()
@@ -133,7 +136,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(client.clone())
             .route("/v1/{endpoint:.*}", web::post().to(proxy_request))
     })
-        .bind("127.0.0.1:8080")?
+        .bind(("127.0.0.1", 4567))?
         .run()
         .await
 }
