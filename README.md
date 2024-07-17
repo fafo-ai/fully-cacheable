@@ -1,5 +1,5 @@
 
-<h1><img width="55px" src="https://github.com/user-attachments/assets/0a0e4df8-fc1e-4463-9156-01f2a091cab0" /> fully-cacheable</h1>
+<h1><img width="55px" src="https://github.com/user-attachments/assets/c689c8d7-5c05-4c05-8247-49f976a1036d" /> fully-cacheable</h1>
 
 Call this instead of OpenAI's API - and have your embeddings automatically cached.
 
