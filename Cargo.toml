@@ -1,5 +1,5 @@
 [package]
-name = "openai-proxy"
+name = "fully-cacheable"
 version = "0.1.0"
 edition = '2021'
 
