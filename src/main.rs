@@ -28,15 +28,13 @@ async fn proxy_request(
     client: web::Data<reqwest::Client>,
 ) -> Result<HttpResponse, Error> {
 
-    let to = "api.openai.com";
-    let mut url = req.full_url();
-    println!("Got request: {:?} -> {:?}", url.as_str(), to);
+    let to_base = "api.openai.com";
+    let from = req.full_url();
+    let mut to = from.clone();
+    to.set_host(Option::from(to_base)).unwrap();
+    to.set_scheme("https").unwrap();
 
-    url.set_host(Option::from(to)).unwrap();
-    url.set_scheme("https").unwrap();
-
-    println!("Got request: {:?}", url);
-
+    println!("Got request: {:?} -> {:?}", from.as_str(), to.as_str());
 
     let openai_api_key = req.headers()
         .get(AUTHORIZATION)
@@ -45,12 +43,14 @@ async fn proxy_request(
         .to_string();
 
 
-    if url.path().to_string() == "/v1/embeddings" {
-        println!("Call to embeddings API. Cacheing...");
+    if from.path().to_string() == "/v1/embeddings" {
         let input = req_body["input"].as_str().unwrap_or("");
         let mut cache = state.embedding_cache.lock().unwrap();
 
+        print!("Call to embeddings API.");
         if let Some(cached_embedding) = cache.get(input) {
+            println!("Cache hit!");
+
             return Ok(HttpResponse::Ok().json(json!({
                 "data": [{
                     "embedding": cached_embedding,
@@ -65,8 +65,9 @@ async fn proxy_request(
                 }
             })));
         }
+        println!("Cache miss..");
 
-        let resp = client.post(url)
+        let resp = client.post(to)
             .header(AUTHORIZATION, &openai_api_key)
             .json(&req_body)
             .send()
@@ -128,7 +129,7 @@ async fn proxy_request(
                 .streaming(rx))
              */
         } else {
-            let resp = client.post(url)
+            let resp = client.post(to)
                 .headers(headers)
                 .json(&req_body)
                 .send()
