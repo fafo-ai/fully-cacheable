@@ -2,6 +2,10 @@
 <h1>
   <img width="55px" src="https://github.com/user-attachments/assets/c689c8d7-5c05-4c05-8247-49f976a1036d" /> 
   <span>fully-cacheable</span>
+
+  <a href="https://github.com/fafo-ai/fully-cacheable/.github/workflows/rust.yml">
+    <img src="https://github.com/fafo-ai/fully-cacheable/.github/workflows/rust.yml/badge.svg?branch=main" />
+  </a>
 </h1>
 
 Call this instead of OpenAI's API - and have your embeddings automatically cached.
