@@ -16,5 +16,6 @@ RUN cargo build --release --bin fully-cacheable
 # We do not need the Rust toolchain to run the binary!
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
+RUN apt-get update && apt-get install -y openssl && apt-get clean
 COPY --from=builder /app/target/release/fully-cacheable /usr/local/bin
 ENTRYPOINT ["/usr/local/bin/fully-cacheable"]

@@ -202,7 +202,7 @@ async fn main() -> std::io::Result<()>{
             .service(handle_status)
             .route("/v1/{endpoint:.*}", web::post().to(proxy_request))
     })
-        .bind(("127.0.0.1", PORT))?
+        .bind(("0.0.0.0", PORT))?
         .run()
         .await
 }
