@@ -1,10 +1,15 @@
 use actix_web::{web, App, HttpServer, HttpResponse, Error, HttpRequest};
-use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
-use reqwest_eventsource::{Event, EventSource};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
+/*
+use futures::StreamExt;
+use reqwest_eventsource::{Event, EventSource};
+ */
+
+
+const PORT: u16 = 4567;
 
 struct AppState {
     embedding_cache: Mutex<HashMap<String, Vec<f32>>>,
@@ -53,7 +58,7 @@ async fn proxy_request(
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-        let mut resp_json: Value = resp.json().await
+        let resp_json: Value = resp.json().await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
         let embedding = resp_json["data"][0]["embedding"].as_array().unwrap().to_vec();
         let embedding: Vec<f32> = embedding.into_iter().map(|v| v.as_f64().unwrap() as f32).collect();
@@ -123,20 +128,22 @@ async fn proxy_request(
 }
 
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> std::io::Result<()>{
     let app_state = web::Data::new(AppState {
         embedding_cache: Mutex::new(HashMap::new()),
     });
 
     let client = web::Data::new(reqwest::Client::new());
 
-    HttpServer::new(move || {
+    let _server = HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
             .app_data(client.clone())
             .route("/v1/{endpoint:.*}", web::post().to(proxy_request))
     })
-        .bind(("127.0.0.1", 4567))?
+        .bind(("127.0.0.1", PORT))?
         .run()
-        .await
+        .await;
+    println!("Server listening on port {}", PORT);
+    Ok(())
 }
