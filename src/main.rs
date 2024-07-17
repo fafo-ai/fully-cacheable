@@ -3,7 +3,8 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
-
+use std::time::Duration;
+use base64::prelude::*;
 /*
 use futures::StreamExt;
 use reqwest_eventsource::{Event, EventSource};
@@ -13,7 +14,7 @@ use reqwest_eventsource::{Event, EventSource};
 const PORT: u16 = 4567;
 
 struct AppState {
-    embedding_cache: Mutex<HashMap<String, Vec<f32>>>,
+    embedding_cache: Mutex<HashMap<String, Vec<u8>>>,
 }
 
 #[get("/status")]
@@ -33,6 +34,7 @@ async fn proxy_request(
     let mut to = from.clone();
     to.set_host(Option::from(to_base)).unwrap();
     to.set_scheme("https").unwrap();
+    to.set_port(Some(443)).unwrap();
 
     println!("Got request: {:?} -> {:?}", from.as_str(), to.as_str());
 
@@ -69,17 +71,27 @@ async fn proxy_request(
 
         let resp = client.post(to)
             .header(AUTHORIZATION, &openai_api_key)
+            .timeout(Duration::from_secs(2))
             .json(&req_body)
             .send()
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
+        /* Assert there's only one */
         let resp_json: Value = resp.json().await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-        let embedding = resp_json["data"][0]["embedding"].as_array().unwrap().to_vec();
-        let embedding: Vec<f32> = embedding.into_iter().map(|v| v.as_f64().unwrap() as f32).collect();
 
+        println!("Coe: {:?}", resp_json);
+
+        let embedding = BASE64_STANDARD.decode(
+            resp_json["data"][0]["embedding"].as_str().unwrap()
+        )
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+
+        println!("B");
         cache.insert(input.to_string(), embedding.clone());
+        println!("C");
 
         Ok(HttpResponse::Ok().json(resp_json))
     } else {

@@ -46,7 +46,7 @@
   "keyToString": {
     "ASKED_ADD_EXTERNAL_FILES": "true",
     "ASKED_SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "Cargo.Run fully-cacheable.executor": "Debug",
+    "Cargo.Run fully-cacheable.executor": "Run",
     "Cargo.Run openai-proxy.executor": "Run",
     "Cargo.Test lib::tests.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",

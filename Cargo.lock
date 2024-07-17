@@ -528,6 +528,7 @@ name = "fully-cacheable"
 version = "0.1.0"
 dependencies = [
  "actix-web",
+ "base64 0.21.7",
  "futures",
  "reqwest",
  "reqwest-eventsource",
