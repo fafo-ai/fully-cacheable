@@ -143,7 +143,7 @@ async fn proxy_request(
     }
 }
 
-#[actix_web::main]
+#[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> std::io::Result<()>{
     let app_state = web::Data::new(AppState {
         embedding_cache: Mutex::new(HashMap::new()),
