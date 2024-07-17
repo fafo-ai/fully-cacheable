@@ -24,7 +24,7 @@ primary_region = 'cdg'
   cpu_kind = 'shared'
   cpus = 1
 
-[mounts]
-  source = "litefs"
-  destination = "/var/lib/litefs"
+#[mounts]
+#  source = "litefs"
+#  destination = "/var/lib/litefs"
 
