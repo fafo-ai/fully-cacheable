@@ -50,7 +50,7 @@ async fn proxy_request(
         let cache_key = input.to_string();
         let mut cache = state.embedding_cache.lock().unwrap();
 
-        let old_format = req_body["encoding_format"].as_str().unwrap_or("text");
+        let old_format = req_body["encoding_format"].as_str().map(|x| x.to_string()).unwrap_or("text".into());
 
         print!("Call to embeddings API.");
         let result = if let Some(cached_embedding) = cache.get(&cache_key) {
@@ -100,10 +100,18 @@ async fn proxy_request(
                     "total_tokens": result.len() / 4,
                 }
             })));
-        } else {
+        } else if old_format == "float" {
+            let ret: Vec<f32> = result
+                .chunks_exact(4)
+                .map(|chunk| {
+                    let arr: [u8; 4] = chunk.try_into().unwrap();
+                    f32::from_le_bytes(arr)
+                })
+                .collect();
+
             return Ok(HttpResponse::Ok().json(json!({
                 "data": [{
-                    "embedding": result,
+                    "embedding": ret,
                     "index": 0,
                     "object": "embedding"
                 }],
@@ -113,7 +121,9 @@ async fn proxy_request(
                     "prompt_tokens": result.len() / 4,
                     "total_tokens": result.len() / 4,
                 }
-            }));
+            })))
+        } else {
+            todo!()
         }
     } else {
         println!("Just proxying...");
