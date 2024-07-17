@@ -23,3 +23,8 @@ primary_region = 'cdg'
   memory = '2gb'
   cpu_kind = 'shared'
   cpus = 1
+
+[mounts]
+  source = "litefs"
+  destination = "/var/lib/litefs"
+

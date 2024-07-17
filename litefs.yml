@@ -1,0 +1,9 @@
+# This directory is where your application will access the database.
+fuse:
+  dir: "/litefs"
+
+# This directory is where LiteFS will store internal data.
+# You must place this directory on a persistent volume.
+data:
+  dir: "/var/lib/litefs"
+

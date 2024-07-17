@@ -16,6 +16,10 @@ RUN cargo build --release --bin fully-cacheable
 # We do not need the Rust toolchain to run the binary!
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
-RUN apt-get update && apt-get install -y openssl && apt-get clean
+RUN apt-get update && apt-get install -y openssl ca-certificates fuse3 sqlite3 && apt-get clean
+COPY --from=flyio/litefs:0.5 /usr/local/bin/litefs /usr/local/bin/litefs
 COPY --from=builder /app/target/release/fully-cacheable /usr/local/bin
+COPY ./litefs.yml /etc/litefs.yml
+
+#ENTRYPOINT ["/usr/local/bin/litefs", "mount", "--", "/usr/local/bin/fully-cacheable"]
 ENTRYPOINT ["/usr/local/bin/fully-cacheable"]
