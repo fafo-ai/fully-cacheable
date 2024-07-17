@@ -7,11 +7,21 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="fa8c69ca-6bf3-4ac0-8922-a0ef0efe720b" name="Changes" comment="" />
+    <list default="true" id="fa8c69ca-6bf3-4ac0-8922-a0ef0efe720b" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/src/test.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.rs" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.rs" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Rust File" />
+      </list>
+    </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -194,6 +204,7 @@
       <workItem from="1721209045259" duration="2846000" />
       <workItem from="1721217671015" duration="672000" />
       <workItem from="1721218372585" duration="2040000" />
+      <workItem from="1721221851499" duration="242000" />
     </task>
     <servers />
   </component>
