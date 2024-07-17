@@ -81,7 +81,7 @@ async fn proxy_request(
         let resp_json: Value = resp.json().await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-        println!("Coe: {:?}", resp_json);
+        // println!("Coe: {:?}", resp_json);
 
         let embedding = BASE64_STANDARD.decode(
             resp_json["data"][0]["embedding"].as_str().unwrap()
