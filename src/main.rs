@@ -135,7 +135,8 @@ async fn main() -> std::io::Result<()>{
 
     let client = web::Data::new(reqwest::Client::new());
 
-    let _server = HttpServer::new(move || {
+    println!("Server listening on port: {}", PORT);
+    HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
             .app_data(client.clone())
@@ -143,7 +144,5 @@ async fn main() -> std::io::Result<()>{
     })
         .bind(("127.0.0.1", PORT))?
         .run()
-        .await;
-    println!("Server listening on port {}", PORT);
-    Ok(())
+        .await
 }
