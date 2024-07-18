@@ -50,7 +50,7 @@ async fn proxy_request(
     to.set_scheme("https").unwrap();
     to.set_port(Some(443)).unwrap();
 
-    println!("Got request: {:?} -> {:?}", from.as_str(), to.as_str());
+    print!("Got request: {:?} -> {:?}", from.as_str(), to.as_str());
 
     let openai_api_key = req.headers()
         .get(AUTHORIZATION)
@@ -60,6 +60,7 @@ async fn proxy_request(
 
 
     if from.path().to_string() == "/v1/embeddings" {
+        println!();
         let mut cache = state.embedding_cache.lock().unwrap();
         let old_format = req_body["encoding_format"].as_str().map(|x| x.to_string()).unwrap_or("text".into());
         let inputs = req_body["input"].as_array().unwrap().clone();
@@ -72,10 +73,8 @@ async fn proxy_request(
             let cache_key = input.to_string();
 
             let result = if let Some(cached_embedding) = cache.get(&cache_key) {
-                println!("Cache hit!");
                 CacheHitOrMiss::Hit(cached_embedding.clone())
             } else {
-                println!("Cache miss..");
                 should_query = true;
                 let where_to_find = to_query.len();
                 to_query.push(input);
@@ -120,7 +119,7 @@ async fn proxy_request(
                 }
             }).partition(Result::is_ok)
         } else {
-            println!("All cache hits!");
+            println!("All cache hits ({})!", inputs.len());
             hits_and_misses.into_iter().map(|hit_or_miss| {
                 match hit_or_miss {
                     CacheHitOrMiss::Hit(embedding) => Ok(embedding),
@@ -175,7 +174,7 @@ async fn proxy_request(
             }
         })))
     } else {
-        println!("Just proxying...");
+        println!(" - Just proxying...");
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, HeaderValue::from_str(&openai_api_key)
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?);
