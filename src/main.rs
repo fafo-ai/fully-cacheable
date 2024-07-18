@@ -85,7 +85,7 @@ async fn proxy_request(
         }
 
         let (successes, failures): (Vec<Result<Vec<u8>, Error>>, Vec<Result<Vec<u8>, Error>>) = if should_query {
-            print!("Call to embeddings API. Querying {} non-cached items out of {} requested.", to_query.len(), inputs.len());
+            println!("Call to embeddings API. Querying {} non-cached items out of {} requested.", to_query.len(), inputs.len());
 
             let req_body_object_mut = req_body.as_object_mut().unwrap();
             req_body_object_mut.insert("encoding_format".into(), json!("base64"));
