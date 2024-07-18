@@ -22,4 +22,5 @@ COPY --from=builder /app/target/release/fully-cacheable /usr/local/bin
 COPY ./litefs.yml /etc/litefs.yml
 
 #ENTRYPOINT ["/usr/local/bin/litefs", "mount", "--", "/usr/local/bin/fully-cacheable"]
-ENTRYPOINT ["/usr/local/bin/fully-cacheable"]
+#ENTRYPOINT ["/usr/local/bin/fully-cacheable"]
+ENTRYPOINT ["/usr/local/bin/litefs", "mount"]
