@@ -15,9 +15,9 @@ Written in Rust.
 # Getting started
 To use `fully-cacheable`, simply substitute OpenAI's `base_url` by a fully-cacheable server. For example in Python:
 
-```
+```python
 openai_client = openai.Client(base_url="https://fully-cacheable.fly.dev/v1")
-
+# or
 openai_client = openai.Client(base_url="http://localhost:4567/v1")
 ```
 
