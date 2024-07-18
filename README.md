@@ -21,7 +21,7 @@ openai_client = openai.Client(base_url="https://fully-cacheable.fly.dev/v1")
 openai_client = openai.Client(base_url="http://localhost:4567/v1")
 ```
 
-the top URL is hosted by us - but feel free to use it. The bottom one assumes you're running a `fully-cacheable` server locally.
+the top URL is hosted by us - feel free to use it! The bottom one assumes you're running a `fully-cacheable` server locally.
 
 
 Per [the code](https://github.com/fafo-ai/fully-cacheable/blob/main/src/main.rs#L25), `fully-cacheable` doesn't store any of the data that you send to it. Only hashes.
