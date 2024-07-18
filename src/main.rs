@@ -22,6 +22,20 @@ async fn handle_status() -> impl Responder {
     HttpResponse::Ok().body("up")
 }
 
+
+pub struct Hit {
+    pub data: Vec<u8>,
+}
+
+pub struct Miss {
+    pub where_to_find: usize,
+}
+
+pub enum CacheHitOrMiss {
+    Hit(Vec<u8>),
+    Miss(usize),
+}
+
 async fn proxy_request(
     req: HttpRequest,
     mut req_body: web::Json<Value>,
@@ -46,20 +60,37 @@ async fn proxy_request(
 
 
     if from.path().to_string() == "/v1/embeddings" {
-        let input = req_body["input"].as_str().unwrap_or("");
-        let cache_key = input.to_string();
         let mut cache = state.embedding_cache.lock().unwrap();
-
         let old_format = req_body["encoding_format"].as_str().map(|x| x.to_string()).unwrap_or("text".into());
+        let inputs = req_body["input"].as_array().unwrap().clone();
 
-        print!("Call to embeddings API.");
-        let result = if let Some(cached_embedding) = cache.get(&cache_key) {
-            println!("Cache hit!");
-            cached_embedding.clone()
-        } else {
-            println!("Cache miss..");
+        let mut should_query = false;
+        let mut to_query = vec![];
+        let mut hits_and_misses= vec![];
+        for i in 0..inputs.len() {
+            let input = inputs[i].as_str().unwrap();
+            let cache_key = input.to_string();
 
-            req_body.as_object_mut().unwrap().insert("encoding_format".into(), json!("base64"));
+            let result = if let Some(cached_embedding) = cache.get(&cache_key) {
+                println!("Cache hit!");
+                CacheHitOrMiss::Hit(cached_embedding.clone())
+            } else {
+                println!("Cache miss..");
+                should_query = true;
+                let where_to_find = to_query.len();
+                to_query.push(input);
+                CacheHitOrMiss::Miss(where_to_find)
+            };
+            hits_and_misses.push(result)
+        }
+
+        let (successes, failures): (Vec<Result<Vec<u8>, Error>>, Vec<Result<Vec<u8>, Error>>) = if should_query {
+            print!("Call to embeddings API. Querying {} non-cached items out of {} requested.", to_query.len(), inputs.len());
+
+            let req_body_object_mut = req_body.as_object_mut().unwrap();
+            req_body_object_mut.insert("encoding_format".into(), json!("base64"));
+            req_body_object_mut.insert("input".into(), json!(to_query));
+
             let resp = client.post(to)
                 .header(AUTHORIZATION, &openai_api_key)
                 .timeout(Duration::from_secs(2))
@@ -68,63 +99,81 @@ async fn proxy_request(
                 .await
                 .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-            /* Assert there's only one */
             let resp_json: Value = resp.json().await
                 .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
             // println!("Coe: {:?}", resp_json);
 
-            let embedding = BASE64_STANDARD.decode(
-                resp_json["data"][0]["embedding"].as_str().unwrap()
-            )
-                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+            hits_and_misses.into_iter().map(|hit_or_miss| {
+                match hit_or_miss {
+                    CacheHitOrMiss::Hit(embedding) => Ok(embedding),
+                    CacheHitOrMiss::Miss(where_to_find) => {
+                        let embedding = BASE64_STANDARD.decode(
+                            resp_json["data"][where_to_find]["embedding"].as_str().unwrap()
+                        )
+                            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-            println!("B");
-            let x = embedding.clone();
-            cache.insert(cache_key, x);
-            println!("C");
-            embedding
+                        let input = to_query[where_to_find].to_string();
+                        cache.insert(input, embedding.clone());
+                        Ok(embedding)
+                    }
+                }
+            }).partition(Result::is_ok)
+        } else {
+            println!("All cache hits!");
+            hits_and_misses.into_iter().map(|hit_or_miss| {
+                match hit_or_miss {
+                    CacheHitOrMiss::Hit(embedding) => Ok(embedding),
+                    CacheHitOrMiss::Miss(_) => unreachable!(),
+                }
+            }).partition(Result::is_ok)
         };
 
-        if old_format == "base64" {
-            return Ok(HttpResponse::Ok().json(json!({
-                "data": [{
-                    "embedding": BASE64_STANDARD.encode(&result),
-                    "index": 0,
-                    "object": "embedding"
-                }],
-                "model": req_body["model"],
-                "object": "list",
-                "usage": {
-                    "prompt_tokens": result.len() / 4,
-                    "total_tokens": result.len() / 4,
-                }
-            })));
+        if !failures.is_empty() {
+            return Err(actix_web::error::ErrorInternalServerError("Failed to get embeddings"));
+        }
+
+        let ret: Vec<Vec<u8>> = successes.into_iter().map(Result::unwrap).collect();
+
+        let data: Vec<_> = if old_format == "base64" {
+            (0..ret.len()).map(|i| {
+                json!({
+                "embedding": BASE64_STANDARD.encode(&ret[i]),
+                "index": i,
+                "object": "embedding"
+                })
+            }).collect()
         } else if old_format == "float" {
-            let ret: Vec<f32> = result
+            fn to_float(x: Vec<u8>) -> Vec<f32> {
+                x
                 .chunks_exact(4)
                 .map(|chunk| {
                     let arr: [u8; 4] = chunk.try_into().unwrap();
                     f32::from_le_bytes(arr)
                 })
-                .collect();
-
-            return Ok(HttpResponse::Ok().json(json!({
-                "data": [{
-                    "embedding": ret,
-                    "index": 0,
+                .collect()
+            }
+            (0..ret.len()).map(|i| {
+                json!({
+                    "embedding": to_float(ret[i].clone()),
+                    "index": i,
                     "object": "embedding"
-                }],
-                "model": req_body["model"],
-                "object": "list",
-                "usage": {
-                    "prompt_tokens": result.len() / 4,
-                    "total_tokens": result.len() / 4,
-                }
-            })))
+                })
+            }).collect()
         } else {
             todo!()
-        }
+        };
+
+        let total_len: usize = ret.iter().map(|x| x.len()).sum();
+        return Ok(HttpResponse::Ok().json(json!({
+            "data": data,
+            "model": req_body["model"],
+            "object": "list",
+            "usage": {
+                "prompt_tokens": total_len / 4,
+                "total_tokens": total_len / 4,
+            }
+        })))
     } else {
         println!("Just proxying...");
         let mut headers = HeaderMap::new();
