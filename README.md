@@ -8,7 +8,7 @@
   </a>
 </h1>
 
-```https://fully-cacheable.fly.dev/status```
+[https://fully-cacheable.fly.dev/status](https://fully-cacheable.fly.dev/status)
 
 Call this instead of OpenAI's API - and have your embeddings automatically cached.
 
