@@ -2,11 +2,15 @@ use actix_web::{web, get, App, HttpServer, HttpResponse, Error, HttpRequest, Res
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex};
 use std::time::Duration;
 use base64::prelude::*;
-use sqlite::{Connection, State};
+use futures::TryStreamExt;
+// use sqlite::{Connection, State};
 use sha2::{Sha256, Digest};
+use sqlx::migrate::Migrate;
+use sqlx::{Row, Sqlite};
+use sqlx::sqlite::SqlitePool;
 /*
 use futures::StreamExt;
 use reqwest_eventsource::{Event, EventSource};
@@ -17,7 +21,7 @@ const PORT: u16 = 4567;
 
 struct AppState {
     embedding_cache: Mutex<HashMap<String, Vec<u8>>>,
-    db_connection: Mutex<Connection>,
+    pool: SqlitePool,
 }
 
 #[get("/status")]
@@ -39,18 +43,20 @@ pub enum CacheHitOrMiss {
     Miss(usize),
 }
 
+fn hash(input: String) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(input);
+    hasher.finalize().to_vec()
+}
+
 async fn proxy_request(
     req: HttpRequest,
     mut req_body: web::Json<Value>,
     state: web::Data<AppState>,
     client: web::Data<reqwest::Client>,
 ) -> Result<HttpResponse, Error> {
-    /* DB setup Code */
-    let query = "
-    CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);
-";
-    let connection = state.db_connection.lock().unwrap();
-    connection.execute(query).unwrap();
+    let pool = &state.pool;
+    let mut connection = state.pool.acquire().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     /* Start handling */
     let to_base = "api.openai.com";
@@ -75,35 +81,31 @@ async fn proxy_request(
         let mut cache = state.embedding_cache.lock().unwrap();
         let old_format = req_body["encoding_format"].as_str().map(|x| x.to_string()).unwrap_or("text".into());
         let inputs = req_body["input"].as_array().unwrap().clone();
+        let model = "gpt-4";
+        let dimensions = req_body["dimensions"].as_i64().unwrap().clone();
 
         let mut should_query = false;
         let mut to_query = vec![];
         let mut hits_and_misses= vec![];
         for i in 0..inputs.len() {
             let input = inputs[i].as_str().unwrap();
-            let cache_key = input.to_string();
+            let cache_key = hash(input.to_string());
 
-            let mut hasher = Sha256::new();
-            hasher.update(cache_key.clone()); // TODO: We don't need to clone here
-            let hash = hasher.finalize();
+            let search= sqlx::query("SELECT * FROM embeddings WHERE hash = ?")
+                .bind(cache_key)
+                .fetch_one(pool)
+                .await;
 
-            let query = "SELECT * FROM embeddings WHERE hash = ?";
-            let mut statement = connection.prepare(query).unwrap();
-            statement.bind((1, 50)).unwrap();
-
-            while let Ok(State::Row) = statement.next() {
-                println!("model = {}", statement.read::<String, _>("model").unwrap());
-                println!("dimensions = {}", statement.read::<i64, _>("dimensions").unwrap());
-            }
-
-            let result = if let Some(cached_embedding) = cache.get(&cache_key) {
-                CacheHitOrMiss::Hit(cached_embedding.clone())
+            let result = if let Ok(row) = search {
+                let cached_embedding = row.try_get("value").unwrap();
+                CacheHitOrMiss::Hit(cached_embedding)
             } else {
                 should_query = true;
                 let where_to_find = to_query.len();
                 to_query.push(input);
                 CacheHitOrMiss::Miss(where_to_find)
             };
+
             hits_and_misses.push(result)
         }
 
@@ -126,9 +128,10 @@ async fn proxy_request(
                 .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
             // println!("Coe: {:?}", resp_json);
-
-            hits_and_misses.into_iter().map(|hit_or_miss| {
-                match hit_or_miss {
+            let mut ret: Vec<_> = vec![];
+            let mut errors: Vec<_> = vec![];
+            for hit_or_miss in hits_and_misses {
+                let e = match hit_or_miss {
                     CacheHitOrMiss::Hit(embedding) => Ok(embedding),
                     CacheHitOrMiss::Miss(where_to_find) => {
                         let embedding = BASE64_STANDARD.decode(
@@ -137,11 +140,30 @@ async fn proxy_request(
                             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
                         let input = to_query[where_to_find].to_string();
-                        cache.insert(input, embedding.clone());
-                        Ok(embedding)
+                        let cache_key = hash(input);
+
+                        let query = sqlx::query("INSERT INTO embeddings (model, dimensions, hash, value) VALUES (?, ?, ?, ?)")
+                            .bind(&model)
+                            .bind(&dimensions)
+                            .bind(&cache_key)
+                            .bind(&embedding)
+                            .execute(pool)
+                            .await;
+
+                        match query {
+                            Ok(_) => {
+                                Ok(embedding)
+                            }
+                            Err(e) => {
+                                println!("Failed to insert into cache: {:?}", e);
+                                Err(actix_web::error::ErrorInternalServerError(e))
+                            }
+                        }
                     }
-                }
-            }).partition(Result::is_ok)
+                };
+                ret.push(e)
+            }
+            (ret, errors)
         } else {
             println!("All cache hits ({})!", inputs.len());
             hits_and_misses.into_iter().map(|hit_or_miss| {
@@ -263,11 +285,16 @@ async fn proxy_request(
 
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> std::io::Result<()>{
-    let connection = sqlite::open("cats.db").unwrap();
+    let url = "cats.db"; //&env::var("DATABASE_URL")
+    let pool = SqlitePool::connect(url).await.unwrap();
+
+    /* DB setup Code */
+    let query = sqlx::query("CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);");
+    query.execute(&pool).await.unwrap();
 
     let app_state = web::Data::new(AppState {
         embedding_cache: Mutex::new(HashMap::new()),
-        db_connection: Mutex::new(connection),
+        pool,
     });
 
 
