@@ -92,8 +92,8 @@ async fn proxy_request(
             statement.bind((1, 50)).unwrap();
 
             while let Ok(State::Row) = statement.next() {
-                println!("name = {}", statement.read::<String, _>("model").unwrap());
-                println!("age = {}", statement.read::<i64, _>("dimensions").unwrap());
+                println!("model = {}", statement.read::<String, _>("model").unwrap());
+                println!("dimensions = {}", statement.read::<i64, _>("dimensions").unwrap());
             }
 
             let result = if let Some(cached_embedding) = cache.get(&cache_key) {
