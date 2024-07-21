@@ -1,3 +1,4 @@
+use std::env;
 use actix_web::{web, get, App, HttpServer, HttpResponse, Error, HttpRequest, Responder};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
@@ -287,8 +288,13 @@ async fn proxy_request(
 
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> std::io::Result<()>{
-    let url = "cats.db"; //&env::var("DATABASE_URL")
-    let pool = SqlitePool::connect(url).await.unwrap();
+    let db_path = &env::var("DATABASE_PATH").unwrap_or("sqlite::memory:".to_string());
+    let pool = SqlitePool::connect(db_path).await.unwrap();
+    if db_path == "sqlite::memory:" {
+        print!("Using in-memory database. ");
+    } else {
+        print!("Using database at {}. ", db_path);
+    }
 
     /* DB setup Code */
     let query = sqlx::query("CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);");
