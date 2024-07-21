@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 use base64::prelude::*;
+use sqlite::{Connection, State};
+use sha2::{Sha256, Digest};
 /*
 use futures::StreamExt;
 use reqwest_eventsource::{Event, EventSource};
@@ -15,6 +17,7 @@ const PORT: u16 = 4567;
 
 struct AppState {
     embedding_cache: Mutex<HashMap<String, Vec<u8>>>,
+    db_connection: Mutex<Connection>,
 }
 
 #[get("/status")]
@@ -42,7 +45,14 @@ async fn proxy_request(
     state: web::Data<AppState>,
     client: web::Data<reqwest::Client>,
 ) -> Result<HttpResponse, Error> {
+    /* DB setup Code */
+    let query = "
+    CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);
+";
+    let connection = state.db_connection.lock().unwrap();
+    connection.execute(query).unwrap();
 
+    /* Start handling */
     let to_base = "api.openai.com";
     let from = req.full_url();
     let mut to = from.clone();
@@ -61,6 +71,7 @@ async fn proxy_request(
 
     if from.path().to_string() == "/v1/embeddings" {
         println!();
+
         let mut cache = state.embedding_cache.lock().unwrap();
         let old_format = req_body["encoding_format"].as_str().map(|x| x.to_string()).unwrap_or("text".into());
         let inputs = req_body["input"].as_array().unwrap().clone();
@@ -71,6 +82,19 @@ async fn proxy_request(
         for i in 0..inputs.len() {
             let input = inputs[i].as_str().unwrap();
             let cache_key = input.to_string();
+
+            let mut hasher = Sha256::new();
+            hasher.update(cache_key.clone()); // TODO: We don't need to clone here
+            let hash = hasher.finalize();
+
+            let query = "SELECT * FROM embeddings WHERE hash = ?";
+            let mut statement = connection.prepare(query).unwrap();
+            statement.bind((1, 50)).unwrap();
+
+            while let Ok(State::Row) = statement.next() {
+                println!("name = {}", statement.read::<String, _>("model").unwrap());
+                println!("age = {}", statement.read::<i64, _>("dimensions").unwrap());
+            }
 
             let result = if let Some(cached_embedding) = cache.get(&cache_key) {
                 CacheHitOrMiss::Hit(cached_embedding.clone())
@@ -234,11 +258,18 @@ async fn proxy_request(
     }
 }
 
+/* pub struct Embedding<'a> {
+} */
+
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> std::io::Result<()>{
+    let connection = sqlite::open("cats.db").unwrap();
+
     let app_state = web::Data::new(AppState {
         embedding_cache: Mutex::new(HashMap::new()),
+        db_connection: Mutex::new(connection),
     });
+
 
     let client = web::Data::new(reqwest::Client::new());
 
