@@ -1,15 +1,11 @@
 use actix_web::{web, get, App, HttpServer, HttpResponse, Error, HttpRequest, Responder};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::sync::{Mutex};
 use std::time::Duration;
 use base64::prelude::*;
-use futures::TryStreamExt;
 // use sqlite::{Connection, State};
 use sha2::{Sha256, Digest};
-use sqlx::migrate::Migrate;
-use sqlx::{Row, Sqlite};
+use sqlx::{Row};
 use sqlx::sqlite::SqlitePool;
 /*
 use futures::StreamExt;
@@ -20,7 +16,6 @@ use reqwest_eventsource::{Event, EventSource};
 const PORT: u16 = 4567;
 
 struct AppState {
-    embedding_cache: Mutex<HashMap<String, Vec<u8>>>,
     pool: SqlitePool,
 }
 
@@ -51,12 +46,13 @@ fn hash(input: String) -> Vec<u8> {
 
 async fn proxy_request(
     req: HttpRequest,
-    mut req_body: web::Json<Value>,
+    req_body: web::Json<Value>,
     state: web::Data<AppState>,
     client: web::Data<reqwest::Client>,
 ) -> Result<HttpResponse, Error> {
     let pool = &state.pool;
-    let mut connection = state.pool.acquire().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    // NOTE: Leaving this line here if we end up needing...
+    // let connection = state.pool.acquire().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     /* Start handling */
     let to_base = "api.openai.com";
@@ -78,10 +74,9 @@ async fn proxy_request(
     if from.path().to_string() == "/v1/embeddings" {
         println!();
 
-        let mut cache = state.embedding_cache.lock().unwrap();
         let old_format = req_body["encoding_format"].as_str().map(|x| x.to_string()).unwrap_or("text".into());
         let inputs = req_body["input"].as_array().unwrap().clone();
-        let model = req_body["model"].as_str().unwrap().clone();
+        let model = req_body["model"].as_str().unwrap();
         let dimensions = req_body["dimensions"].as_i64().unwrap().clone();
 
         let mut should_query = false;
@@ -130,7 +125,7 @@ async fn proxy_request(
 
             // println!("Coe: {:?}", resp_json);
             let mut ret: Vec<_> = vec![];
-            let mut errors: Vec<_> = vec![];
+            let errors: Vec<_> = vec![];
             for hit_or_miss in hits_and_misses {
                 let e = match hit_or_miss {
                     CacheHitOrMiss::Hit(embedding) => Ok(embedding),
@@ -294,7 +289,6 @@ async fn main() -> std::io::Result<()>{
     query.execute(&pool).await.unwrap();
 
     let app_state = web::Data::new(AppState {
-        embedding_cache: Mutex::new(HashMap::new()),
         pool,
     });
 
