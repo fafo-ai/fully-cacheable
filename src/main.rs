@@ -7,7 +7,7 @@ use std::time::Duration;
 use base64::prelude::*;
 // use sqlite::{Connection, State};
 use sha2::{Sha256, Digest};
-use sqlx::{ConnectOptions, Executor, Row};
+use sqlx::Row;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 /*
 use futures::StreamExt;
@@ -293,11 +293,13 @@ async fn main() -> std::io::Result<()>{
     let db_path = &env::var("DATABASE_PATH").unwrap_or("sqlite::memory:".to_string());
 
     /* Create db and table if needed */
-    let mut conn = SqliteConnectOptions::from_str(db_path).unwrap()
-        .create_if_missing(true)
-        .connect().await.unwrap();
+    let options = SqliteConnectOptions::from_str(db_path).unwrap()
+        .create_if_missing(true);
+
+    let pool = SqlitePool::connect_with(options).await.unwrap();
+
     let query = sqlx::query("CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);");
-    conn.execute(query).await.unwrap();
+    query.execute(&pool).await.unwrap();
 
     /* Build connection pool for the app */
     let pool = SqlitePool::connect(db_path).await.unwrap();
