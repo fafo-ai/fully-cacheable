@@ -289,20 +289,23 @@ async fn proxy_request(
 
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> std::io::Result<()>{
+    /* DB setup Code */
     let db_path = &env::var("DATABASE_PATH").unwrap_or("sqlite::memory:".to_string());
+
+    /* Create db and table if needed */
+    let mut conn = SqliteConnectOptions::from_str(db_path).unwrap()
+        .create_if_missing(true)
+        .connect().await.unwrap();
+    let query = sqlx::query("CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);");
+    conn.execute(query).await.unwrap();
+
+    /* Build connection pool for the app */
     let pool = SqlitePool::connect(db_path).await.unwrap();
     if db_path == "sqlite::memory:" {
         print!("Using in-memory database. ");
     } else {
         print!("Using database at {}. ", db_path);
     }
-
-    /* DB setup Code */
-    let mut conn = SqliteConnectOptions::from_str(db_path).unwrap()
-        .create_if_missing(true)
-        .connect().await.unwrap();
-    let query = sqlx::query("CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);");
-    conn.execute(query).await.unwrap();
 
     let app_state = web::Data::new(AppState {
         pool,
