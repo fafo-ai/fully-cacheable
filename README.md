@@ -31,6 +31,13 @@ Per [the code](https://github.com/fafo-ai/fully-cacheable/blob/main/src/main.rs#
 # Building and running fully-cacheable locally
 ```cargo run --package fully-cacheable --bin fully-cacheable```
 
+# Interacting with our live db in Fly
+With the correct fly permissions, run
+```
+fly ssh console
+sqlite3 /litefs/cats.db
+```
+
 
 
 
