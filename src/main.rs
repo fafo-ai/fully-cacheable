@@ -81,7 +81,7 @@ async fn proxy_request(
         let mut cache = state.embedding_cache.lock().unwrap();
         let old_format = req_body["encoding_format"].as_str().map(|x| x.to_string()).unwrap_or("text".into());
         let inputs = req_body["input"].as_array().unwrap().clone();
-        let model = "gpt-4";
+        let model = req_body["model"].as_str().unwrap().clone();
         let dimensions = req_body["dimensions"].as_i64().unwrap().clone();
 
         let mut should_query = false;
@@ -112,7 +112,8 @@ async fn proxy_request(
         let (successes, failures): (Vec<Result<Vec<u8>, Error>>, Vec<Result<Vec<u8>, Error>>) = if should_query {
             println!("Call to embeddings API. Querying {} non-cached items out of {} requested.", to_query.len(), inputs.len());
 
-            let req_body_object_mut = req_body.as_object_mut().unwrap();
+            let mut b = req_body.clone();
+            let req_body_object_mut = b.as_object_mut().unwrap();
             req_body_object_mut.insert("encoding_format".into(), json!("base64"));
             req_body_object_mut.insert("input".into(), json!(to_query));
 
