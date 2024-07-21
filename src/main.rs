@@ -75,9 +75,15 @@ async fn proxy_request(
         println!();
 
         let old_format = req_body["encoding_format"].as_str().map(|x| x.to_string()).unwrap_or("text".into());
-        let inputs = req_body["input"].as_array().unwrap().clone();
-        let model = req_body["model"].as_str().unwrap();
-        let dimensions = req_body["dimensions"].as_i64().unwrap().clone();
+
+        let inputs = match req_body["input"].as_array() {
+            Some(x) => x,
+            None => return Err(actix_web::error::ErrorBadRequest("Embeddings call missing input")),
+        };
+
+        // TODO: Test what happens if these are not provided
+        let model = req_body["model"].as_str();
+        let dimensions = req_body["dimensions"].as_i64();
 
         let mut should_query = false;
         let mut to_query = vec![];
