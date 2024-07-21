@@ -1,4 +1,5 @@
 use std::env;
+use std::str::FromStr;
 use actix_web::{web, get, App, HttpServer, HttpResponse, Error, HttpRequest, Responder};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
@@ -6,8 +7,8 @@ use std::time::Duration;
 use base64::prelude::*;
 // use sqlite::{Connection, State};
 use sha2::{Sha256, Digest};
-use sqlx::{Row};
-use sqlx::sqlite::SqlitePool;
+use sqlx::{ConnectOptions, Executor, Row};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 /*
 use futures::StreamExt;
 use reqwest_eventsource::{Event, EventSource};
@@ -297,8 +298,11 @@ async fn main() -> std::io::Result<()>{
     }
 
     /* DB setup Code */
+    let mut conn = SqliteConnectOptions::from_str(db_path).unwrap()
+        .create_if_missing(true)
+        .connect().await.unwrap();
     let query = sqlx::query("CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);");
-    query.execute(&pool).await.unwrap();
+    conn.execute(query).await.unwrap();
 
     let app_state = web::Data::new(AppState {
         pool,
