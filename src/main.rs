@@ -310,7 +310,6 @@ async fn main() -> std::io::Result<()>{
         .await.unwrap();
 
     /* Build connection pool for the app */
-    let pool = SqlitePool::connect(db_path).await.unwrap();
     if db_path == "sqlite::memory:" {
         print!("Using in-memory database. ");
     } else {
