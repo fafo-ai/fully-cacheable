@@ -1,20 +1,16 @@
 use std::env;
-use std::io::Write;
 use std::str::FromStr;
-use std::task::Poll;
 use actix_web::{web, get, App, HttpServer, HttpResponse, Error, HttpRequest, Responder};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::time::Duration;
 use base64::prelude::*;
-use futures::{pin_mut, stream, StreamExt};
+use futures::StreamExt;
 use reqwest::{Response, StatusCode};
 // use sqlite::{Connection, State};
 use sha2::{Sha256, Digest};
 use sqlx::Row;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-use serde::Deserialize;
-use futures::{future::ok, stream::once};
 /*
 use futures::StreamExt;
 use reqwest_eventsource::{Event, EventSource};
@@ -312,91 +308,14 @@ async fn main() -> std::io::Result<()>{
         .await
 }
 
-#[derive(Debug, Deserialize)]
-struct ChatChunkDelta {
-    content: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChunkChoice {
-    delta: ChatChunkDelta,
-    index: usize,
-    finish_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatCompletionChunk {
-    id: String,
-    object: String,
-    created: usize,
-    model: String,
-    choices: Vec<ChatChunkChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct APIError{
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct APIErrorResponse {
-    error: APIError,
-}
-
 async fn do_stream(response: Response) -> Result<HttpResponse, Error> {
     let stream = response.bytes_stream();
-    pin_mut!(stream);
 
-    let streaming_completion_marker = "[DONE]";
-    let mut previous_chunk_buffer = "".to_owned();
-
-    let out_stream = futures::stream::unfold(0, |_| async move {
-        match stream.next().await {
+    let out_stream = futures::stream::unfold(stream, |mut s| async move {
+        match s.next().await {
             Some(chunk) => {
                 let chunk = chunk.unwrap();
-                let chunk_string = match std::str::from_utf8(&chunk) {
-                    Ok(value) => value,
-                    Err(error) => panic!("Invalid UTF-8 sequence: {}", error),
-                };
-
-                let chunk_string = previous_chunk_buffer + chunk_string;
-                previous_chunk_buffer = "".to_owned();
-
-                let split_data = chunk_string.trim().split("data:");
-                for (index, data_chunk) in split_data.to_owned().enumerate() {
-                    let data_chunk = data_chunk.trim();
-                    if data_chunk.is_empty() {
-                        continue;
-                    }
-                    if data_chunk == streaming_completion_marker {
-                        return None
-                    }
-                    // println!("{:?}", data_chunk);
-                    let data_value = serde_json::from_str::<ChatCompletionChunk>(data_chunk);
-                    let data_value = match data_value {
-                        Ok(value) => value,
-                        Err(_) => {
-                            let _ = match serde_json::from_str::<APIErrorResponse>(data_chunk) {
-                                Ok(e) => panic!("{}", e.error.message),
-                                Err(_) => {
-                                    // Chunk ends in a partial JSON
-                                    if index == split_data.to_owned().count() - 1 {
-                                        previous_chunk_buffer = "data: ".to_owned() + &data_chunk;
-                                        break;
-                                    } else {
-                                        panic!("Unknown error!")
-                                    }
-                                }
-                            };
-                        }
-                    };
-                    // println!("{:?}", data_value);
-                    let choice = data_value.choices.first().expect("No choices available");
-                    if let Some(content) = &choice.delta.content {
-                        return Some((content, 0))
-                    }
-                };
-                return None
+                return Some((Ok::<actix_web::web::Bytes, Error>(chunk), s))
             },
             None => None,
         }
