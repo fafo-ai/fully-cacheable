@@ -5,6 +5,7 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::time::Duration;
 use base64::prelude::*;
+use futures::future::join_all;
 use futures::StreamExt;
 use reqwest::{Response, StatusCode};
 use sha2::{Sha256, Digest};
@@ -144,10 +145,9 @@ async fn proxy_request(
             assert_eq!(resp_json["model"], model);
 
             // println!("Coe: {:?}", resp_json);
-            let mut ret: Vec<_> = vec![];
-            let errors: Vec<_> = vec![];
-            for hit_or_miss in hits_and_misses {
-                let e = match hit_or_miss {
+
+            let futures = hits_and_misses.into_iter().map(|hit_or_miss| async {
+                match hit_or_miss {
                     CacheHitOrMiss::Hit(embedding) => Ok(embedding),
                     CacheHitOrMiss::Miss(where_to_find) => {
                         let embedding = BASE64_STANDARD.decode(
@@ -169,19 +169,17 @@ async fn proxy_request(
                             .await;
 
                         match query {
-                            Ok(_) => {
-                                Ok(embedding)
-                            }
+                            Ok(_) => Ok(embedding),
                             Err(e) => {
                                 println!("Failed to insert into cache: {:?}", e);
                                 Err(actix_web::error::ErrorInternalServerError(e))
                             }
                         }
                     }
-                };
-                ret.push(e)
-            }
-            (ret, errors)
+                }
+            });
+            let resolved = join_all(futures).await;
+            resolved.into_iter().partition(Result::is_ok)
         } else {
             println!("All cache hits ({})!", inputs.len());
             hits_and_misses.into_iter().map(|hit_or_miss| {
