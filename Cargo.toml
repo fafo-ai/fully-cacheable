@@ -5,13 +5,11 @@ edition = '2021'
 
 [dependencies]
 actix-web = "4.0"
-reqwest = { version = "0.11", features = ["json"] }
-reqwest-eventsource = "0.4"
+reqwest = { version = "0.11", features = ["json", "stream"] }
 serde_json = "1.0"
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
 base64 = "0.21.7"
 sha2 = "0.10.8"
 sqlx = { version = "0.7.4", features = ["sqlite", "runtime-tokio"] }
-serde = { version = "1.0.204", features = ["derive"] }
 
