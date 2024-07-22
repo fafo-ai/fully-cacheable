@@ -7,14 +7,9 @@ use std::time::Duration;
 use base64::prelude::*;
 use futures::StreamExt;
 use reqwest::{Response, StatusCode};
-// use sqlite::{Connection, State};
 use sha2::{Sha256, Digest};
 use sqlx::Row;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-/*
-use futures::StreamExt;
-use reqwest_eventsource::{Event, EventSource};
- */
 
 
 const PORT: u16 = 4567;
@@ -46,6 +41,10 @@ fn hash(input: String) -> Vec<u8> {
     let mut hasher = Sha256::new();
     hasher.update(input);
     hasher.finalize().to_vec()
+}
+
+fn hash_embeddings_call(input: &str, model: &str, dimensions: i64) -> Vec<u8> {
+    return hash(format!("{}-{}-{}", input, model, dimensions))
 }
 
 async fn proxy_request(
@@ -85,16 +84,25 @@ async fn proxy_request(
             None => return Err(actix_web::error::ErrorBadRequest("Embeddings call missing input")),
         };
 
-        // TODO: Test what happens if these are not provided
-        let model = req_body["model"].as_str();
-        let dimensions = req_body["dimensions"].as_i64();
+        let model = match req_body["model"].as_str() {
+            Some(x) => x,
+            None => return Err(actix_web::error::ErrorBadRequest("Embeddings call missing model")),
+        };
+        let dimensions = req_body["dimensions"].as_i64().unwrap_or(
+            match model {
+                "text-embedding-3-large" => 3072,
+                "text-embedding-3-small" => 1536,
+                "text-embedding-ada-002" => 1536,
+                _ => return Err(actix_web::error::ErrorBadRequest(format!("Unknown embeddings model: {}", model))),
+            }
+        );
 
         let mut should_query = false;
         let mut to_query = vec![];
         let mut hits_and_misses= vec![];
         for i in 0..inputs.len() {
             let input = inputs[i].as_str().unwrap();
-            let cache_key = hash(input.to_string());
+            let cache_key = hash_embeddings_call(input, model, dimensions);
 
             let search= sqlx::query("SELECT * FROM embeddings WHERE hash = ?")
                 .bind(cache_key)
@@ -133,6 +141,8 @@ async fn proxy_request(
             let resp_json: Value = resp.json().await
                 .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
+            assert_eq!(resp_json["model"], model);
+
             // println!("Coe: {:?}", resp_json);
             let mut ret: Vec<_> = vec![];
             let errors: Vec<_> = vec![];
@@ -145,8 +155,10 @@ async fn proxy_request(
                         )
                             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-                        let input = to_query[where_to_find].to_string();
-                        let cache_key = hash(input);
+                        let input = to_query[where_to_find];
+                        let cache_key = hash_embeddings_call(input, model, dimensions);
+
+                        assert_eq!(embedding.len() / 4, dimensions as usize);
 
                         let query = sqlx::query("INSERT INTO embeddings (model, dimensions, hash, value) VALUES (?, ?, ?, ?)")
                             .bind(&model)
@@ -262,9 +274,25 @@ async fn proxy_request(
     }
 }
 
-/* pub struct Embedding<'a> {
-} */
+async fn do_stream(response: Response) -> Result<HttpResponse, Error> {
+    let stream = response.bytes_stream();
 
+    let out_stream = futures::stream::unfold(stream, |mut s| async move {
+        match s.next().await {
+            Some(chunk) => {
+                let chunk = chunk.unwrap();
+                return Some((Ok::<actix_web::web::Bytes, Error>(chunk), s))
+            },
+            None => None,
+        }
+    });
+
+    Ok(
+        HttpResponse::Ok()
+            .content_type("application/json")
+            .streaming(out_stream)
+    )
+}
 
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() -> std::io::Result<()>{
@@ -277,8 +305,9 @@ async fn main() -> std::io::Result<()>{
 
     let pool = SqlitePool::connect_with(options).await.unwrap();
 
-    let query = sqlx::query("CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);");
-    query.execute(&pool).await.unwrap();
+    sqlx::query("CREATE TABLE IF NOT EXISTS embeddings (model TEXT, dimensions INTEGER, hash BYTEA, value BYTEA);")
+        .execute(&pool)
+        .await.unwrap();
 
     /* Build connection pool for the app */
     let pool = SqlitePool::connect(db_path).await.unwrap();
@@ -306,24 +335,4 @@ async fn main() -> std::io::Result<()>{
         .bind(("0.0.0.0", PORT))?
         .run()
         .await
-}
-
-async fn do_stream(response: Response) -> Result<HttpResponse, Error> {
-    let stream = response.bytes_stream();
-
-    let out_stream = futures::stream::unfold(stream, |mut s| async move {
-        match s.next().await {
-            Some(chunk) => {
-                let chunk = chunk.unwrap();
-                return Some((Ok::<actix_web::web::Bytes, Error>(chunk), s))
-            },
-            None => None,
-        }
-    });
-
-    Ok(
-        HttpResponse::Ok()
-        .content_type("application/json")
-        .streaming(out_stream)
-    )
 }
