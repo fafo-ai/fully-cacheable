@@ -654,6 +654,7 @@ dependencies = [
  "futures",
  "reqwest",
  "reqwest-eventsource",
+ "serde",
  "serde_json",
  "sha2",
  "sqlx",
