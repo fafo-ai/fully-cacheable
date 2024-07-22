@@ -5,6 +5,8 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde_json::{json, Value};
 use std::time::Duration;
 use base64::prelude::*;
+use futures::{pin_mut, StreamExt};
+use reqwest::{Response, StatusCode};
 // use sqlite::{Connection, State};
 use sha2::{Sha256, Digest};
 use sqlx::Row;
@@ -232,43 +234,19 @@ async fn proxy_request(
 
         let stream = req_body["stream"].as_bool().unwrap_or(false);
 
+
         if stream {
-            todo!();
-            /*
-            let es = EventSource::new(
-                reqwest::Client::builder()
-                    .default_headers(headers)
-                    .build()
-                    .unwrap()
-                    .post("https://api.openai.com/v1/chat/completions")
-                    .json(&req_body)
-            ).unwrap();
+            let response = client.post(to)
+                .headers(headers)
+                .json(&req_body)
+                .send()
+                .await.unwrap();
 
-            let (tx, rx) = actix_web::web::Bytes::new_channel();
+            if response.status() != StatusCode::OK {
+                panic!("something went wrong!")
+            };
 
-            actix_web::rt::spawn(async move {
-                let mut es = es;
-                while let Some(event) = es.next().await {
-                    match event {
-                        Ok(Event::Message(message)) => {
-                            if message.data == "[DONE]" {
-                                break;
-                            }
-                            let _ = tx.send(actix_web::web::Bytes::from(message.data + "\n"));
-                        }
-                        Ok(Event::Open) => continue,
-                        Err(err) => {
-                            eprintln!("Error: {:?}", err);
-                            break;
-                        }
-                    }
-                }
-            });
-
-            Ok(HttpResponse::Ok()
-                .content_type("text/event-stream")
-                .streaming(rx))
-             */
+            return do_stream(response).await
         } else {
             let resp = client.post(to)
                 .headers(headers)
@@ -327,4 +305,16 @@ async fn main() -> std::io::Result<()>{
         .bind(("0.0.0.0", PORT))?
         .run()
         .await
+}
+
+async fn do_stream(response: Response) -> Result<HttpResponse, Error> {
+    let stream = response.bytes_stream();
+    pin_mut!(stream);
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.unwrap();
+        println!("{:?}", chunk);
+        println!("--------------------------\n")
+    };
+
+    Ok(HttpResponse::Ok().json(json!("hello")))
 }
